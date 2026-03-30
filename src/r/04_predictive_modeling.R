@@ -75,9 +75,9 @@ df <- na.omit(df)
 # HOW: We use createDataPartition() from the caret package to split the data randomly.
 
 set.seed(42) # Sets a static random starting point so our results are exactly the same every time we run this script.
-train_index <- createDataPartition(df_numeric$churn, p = 0.7, list = FALSE)
-train_data <- df_numeric[train_index, ]
-test_data  <- df_numeric[-train_index, ]
+train_index <- createDataPartition(df$churn, p = 0.7, list = FALSE)
+train_data <- df[train_index, ]
+test_data  <- df[-train_index, ]
 
 cat("[System] Data split: 70% Training, 30% Holdout Testing.\n")
 
@@ -129,7 +129,7 @@ model_rf <- train(churn ~ ., data = train_data,
                   method = "rf", 
                   metric = "ROC", trControl = cv_rules)
 
-# Model 3: XGBoost
+# Model 3: GBM
 set.seed(42)
 cat("-> Training GBM (Gradient Boosting)...\n")
 model_gbm <- train(churn ~ ., data = train_data,
