@@ -16,41 +16,23 @@ Customer acquisition in the telecommunications sector is **5x to 25x more expens
 
 ---
 
-## 2. 🏗️ Data Architecture & ETL Pipeline
-This project avoids "flat-file" analysis by simulating a production environment. Data is managed in a **PostgreSQL** relational database and joined via optimized SQL queries to create the modeling views.
+## 2. 🏗️ Technical Architecture & ETL Pipeline
+This project avoids "flat-file" analysis by simulating a production environment. The repository is split into dedicated `sql/` and `r/` environments to ensure a clean separation of concerns, with heavy computation pushed to the database layer.
 
-### 1. Relational Database Design
-The raw data is normalized across two primary tables:
-* **`dim_customers`**: Demographics and service subscriptions (Phone, Internet, Security).
-* **`fact_billing`**: Financial data (Monthly charges, Total charges, Payment methods).
+### Phase 1: Database Initialization & Data Ingestion
+* **`sql/01_create_database.sql`**: Initializes the local PostgreSQL `churn_db` environment.
+* **`r/01_fetch_fred_data.R`**: Securely queries the FRED API for macroeconomic inflation indicators (CPI) using robust HTTP request handling (`httr2`), complete with automatic error retries, and parses the JSON response.
+* **`r/02_load_data_to_sql.R`**: Bridges the file system and database by staging the raw Telco CSV and the downloaded FRED API data into PostgreSQL tables using the `DBI` and `RPostgres` drivers.
 
-### 2. SQL Integration (The "Join" Logic)
-Rather than joining data in R (which is memory-intensive), the pipeline pushes the computation to the database layer. This ensures the R environment only receives the final, high-quality analytical dataset.
+### Phase 2: In-Database Feature Engineering
+* **`sql/02_investigation_and_engineering.sql`**: The core ETL script. It cleans dirty data (handling hidden NULLs in total charges), sanitizes columns to snake_case, and utilizes **SQL Window Functions** to engineer advanced financial metrics. For example, it calculates a customer's spend deviation from the average for their specific contract type to measure price sensitivity. It outputs a clean, unified view (`v_customer_intelligence`).
 
-```sql
--- Example of the internal join logic used in 01_db_connection.R
-SELECT 
-    c.*, 
-    b.monthly_charges, 
-    b.total_charges, 
-    b.payment_method
-FROM dim_customers c
-INNER JOIN fact_billing b ON c.customer_id = b.customer_id
-WHERE b.total_charges IS NOT NULL;
-```
+### Phase 3: Statistical Analysis & Modeling
+* **`r/03_eda_and_inference.R`**: Extracts the clean SQL view into R memory, conducts statistical hypothesis testing to validate churn drivers (e.g., proving a statistically significant difference in monthly bills between churned and retained users), and automatically generates publication-ready `ggplot2` visualizations.
+* **`r/04_predictive_modeling.R`**: The machine learning engine. Executes a 10-fold cross-validated "Algorithm Bake-Off" (Logistic Regression vs. Random Forest vs. GBM), evaluates the champion model on a 30% holdout test set, and outputs advanced visual diagnostics (ROC-AUC, Feature Importance).
 ---
 
-## 3. 🏗️ Technical Architecture
-This repository is organized as a modular, production-ready R pipeline.
-
-1.  **Ingestion (`01_db_connection.R`):** Automated extraction from PostgreSQL and live API endpoints.
-2.  **Cleaning & Engineering (`02_data_cleaning.R`):** Regex-based string manipulation and factor encoding.
-3.  **Statistical EDA (`03_eda_visualizations.R`):** Hypothesis testing to validate churn drivers.
-4.  **Modeling Engine (`04_predictive_modeling.R`):** An advanced ML pipeline featuring an automated algorithm "Bake-Off."
-
----
-
-## 4. 📊 Key Insights & Model Performance
+## 3. 📊 Key Insights & Model Performance
 
 ### The "Churn Driver" Discovery
 Through Feature Importance analysis, we discovered that **Contract Type** and **Monthly Charges** are the primary predictors. Customers on Month-to-Month plans with high electronic check payments represent the highest risk segment.
@@ -80,12 +62,16 @@ During the ML phase, the pipeline encountered a deep-level C++ memory pointer co
 1.  **Clone the Repo:** ```bash
     git clone [https://github.com/davidnamgung/customer-churn-intelligence](https://github.com/davidnamgung/customer-churn-intelligence)
     ```
-2.  **Environment:** Ensure `caret`, `gbm`, `pROC`, and `tidyverse` are installed.
-3.  **Execute:** Run the scripts in order (`01` through `04`).
+2.  **Environment Setup:** Ensure PostgreSQL is running locally and R libraries (`caret`, `gbm`, `pROC`, `tidyverse`, `httr2`, `RPostgres`) are installed. Create a `.Renviron` file in the root directory with `DB_PASSWORD=your_password` and `FRED_API_KEY=your_key`.
+3.  **Execute Pipeline:** Run the scripts in the following chronological order:
+    * Run `sql/01_create_database.sql`
+    * Run `r/01_fetch_fred_data.R` then `r/02_load_data_to_sql.R`
+    * Run `sql/02_investigation_and_engineering.sql`
+    * Run `r/03_eda_and_inference.R` followed by `r/04_predictive_modeling.R`
 
 ---
 
-## 7. 🚀 Future Roadmap
+## 6. 🚀 Future Roadmap
 * **SMOTE Resampling:** Address class imbalance to further boost minority class recall.
 * **Shiny Deployment:** Build a web-based dashboard for marketing managers to upload customer lists for real-time scoring.
 * **Hyperparameter Tuning:** Implement a Random Search grid to optimize GBM learning rates.
