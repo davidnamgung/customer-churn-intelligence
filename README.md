@@ -54,7 +54,7 @@ During the ML phase, the pipeline encountered a deep-level C++ memory pointer co
 
 ## 5. ⚙️ How to Run
 1.  **Clone the Repo:** ```bash
-    git clone [https://github.com/YourUsername/your-repo-name.git]()
+    git clone [https://github.com/davidnamgung/customer-churn-intelligence](https://github.com/davidnamgung/customer-churn-intelligence)
     ```
 2.  **Environment:** Ensure `caret`, `gbm`, `pROC`, and `tidyverse` are installed.
 3.  **Execute:** Run the scripts in order (`01` through `04`).
