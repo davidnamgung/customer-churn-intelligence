@@ -1,0 +1,27 @@
+{
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "127.0.0.1",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "Local_Postgres",
+            "group": "localhost",
+            "database": "postgres",
+            "username": "postgres",
+            "password": "davdav281003"
+        },
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "127.0.0.1",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "Churn_Project",
+            "database": "churn_db",
+            "username": "postgres",
+            "password": "davdav281003"
+        }
+    ]
+}
