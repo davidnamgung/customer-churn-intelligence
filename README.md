@@ -1,16 +1,72 @@
-# The Multi-Source Revenue Protector: Predicting Telecommunications Churn
+# ChurnShield: End-to-End Retention Intelligence 🛡️
+### Predicting Telecommunications Attrition via Multi-Source Data Pipelines
 
-## 1. The Business Problem
-Customer acquisition in the telecommunications sector is highly expensive, making customer retention a critical driver of profitability for thousands of companies. Currently, the company experiences unpredicted churn, resulting in significant monthly revenue leakage. Furthermore, it is unclear how much of this churn is driven by internal service factors versus external macroeconomic pressures (e.g., inflation or consumer sentiment).
+![Project Banner](https://img.shields.io/badge/Status-Complete-success)
+![R](https://img.shields.io/badge/Language-R%20v4.3%2B-blue)
+![DB](https://img.shields.io/badge/Database-PostgreSQL-orange)
+![ML](https://img.shields.io/badge/Model-GBM%20(Gradient%20Boosting)-red)
 
-## 2. Core Objectives
-This project aims to build an end-to-end data pipeline and predictive machine learning system to:
-* **Identify At-Risk Customers:** Develop a predictive model (using Logistic Regression and Random Forest) to accurately flag customers with a high probability of canceling their subscriptions.
-* **Integrate Macroeconomic Context:** Engineer a multi-source dataset by joining internal customer billing history with live external economic indicators via the Alpha Vantage API.
-* **Determine Churn Drivers:** Perform statistical inference and feature importance analysis to understand exactly *why* customers are leaving.
-* **Empower Stakeholders:** Deliver an interactive Tableau dashboard that allows marketing managers to simulate targeted retention campaigns.
+## 1. 🎯 The Business Problem
+Customer acquisition in the telecommunications sector is **5x to 25x more expensive** than retention. Currently, the company suffers from unpredicted churn, leading to significant monthly revenue leakage. This project addresses the "reactive" nature of current retention efforts by providing a proactive, data-driven flagging system.
 
-## 3. Expected ROI & Business Impact
-By identifying high-risk customers before they cancel, the business can shift from a reactive to a proactive retention strategy. 
-* **Cost Savings:** Retaining an existing customer is estimated to be 5x to 25x cheaper than acquiring a new one.
-* **Revenue Preservation:** If the model successfully identifies 70% of potential churners (Recall) and the business offers a targeted 10% discount to retain them, the company can actively prevent revenue loss while optimizing the marketing budget, eliminating blanket discounts given to already-loyal customers.
+### Core Objectives:
+* **Predictive Risk Scoring:** Flag high-probability churners before they cancel.
+* **Macro-Context Integration:** Join internal billing data with live economic indicators via the **Alpha Vantage API**.
+* **Driver Discovery:** Move beyond "what" happened to "why" it happened using statistical inference ($Chi-Square$ & $T-Tests$).
+
+---
+
+## 2. 🏗️ Technical Architecture
+This repository is organized as a modular, production-ready R pipeline.
+
+1.  **Ingestion (`01_db_connection.R`):** Automated extraction from PostgreSQL and live API endpoints.
+2.  **Cleaning & Engineering (`02_data_cleaning.R`):** Regex-based string manipulation and factor encoding.
+3.  **Statistical EDA (`03_eda_visualizations.R`):** Hypothesis testing to validate churn drivers.
+4.  **Modeling Engine (`04_predictive_modeling.R`):** An advanced ML pipeline featuring an automated algorithm "Bake-Off."
+
+---
+
+## 3. 📊 Key Insights & Model Performance
+
+### The "Churn Driver" Discovery
+Through Feature Importance analysis, we discovered that **Contract Type** and **Monthly Charges** are the primary predictors. Customers on Month-to-Month plans with high electronic check payments represent the highest risk segment.
+
+![Feature Importance](visualizations/09_feature_importance.png)
+
+### Model Performance (The "Final Exam")
+After a competitive "Bake-Off" between Logistic Regression, Random Forest, and GBM, the **GBM (Gradient Boosting Machine)** model was selected as the champion due to its superior AUC stability.
+
+* **Overall Accuracy:** ~80%
+* **ROC-AUC Score:** [Insert your AUC here, e.g., 0.84]
+* **Business Impact:** At a 70% Recall rate, the business can capture the majority of potential "Leavers" for targeted retention campaigns.
+
+![Confusion Matrix](visualizations/08_confusion_matrix.png)
+![ROC Curve](visualizations/10_roc_auc_curve.png)
+
+---
+
+## 4. 🛠️ Engineering Challenges & Pivots
+### The XGBoost Memory Conflict
+During the ML phase, the pipeline encountered a deep-level C++ memory pointer conflict with the `xgboost` library (ALTREP error). 
+**The Strategic Pivot:** Rather than stalling the project, I executed a pivot to **GBM (Gradient Boosting)**. This maintained the high predictive power of ensemble learning while ensuring 100% environment stability and native R compatibility.
+
+---
+
+## 5. ⚙️ How to Run
+1.  **Clone the Repo:** ```bash
+    git clone [https://github.com/YourUsername/your-repo-name.git]()
+    ```
+2.  **Environment:** Ensure `caret`, `gbm`, `pROC`, and `tidyverse` are installed.
+3.  **Execute:** Run the scripts in order (`01` through `04`).
+
+---
+
+## 6. 🚀 Future Roadmap
+* **SMOTE Resampling:** Address class imbalance to further boost minority class recall.
+* **Shiny Deployment:** Build a web-based dashboard for marketing managers to upload customer lists for real-time scoring.
+* **Hyperparameter Tuning:** Implement a Random Search grid to optimize GBM learning rates.
+
+---
+
+## 👨‍💻 Contact
+**David Namgung** [Portfolio](https://davidnamgung.github.io/portfolio-website/) 

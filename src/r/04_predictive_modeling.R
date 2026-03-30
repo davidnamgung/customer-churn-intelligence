@@ -1,4 +1,4 @@
-# (install.packages(c("randomForest", "xgboost", "caret"))
+# (install.packages(c("randomForest", "xgboost", "caret", "gbm"))
 # renv::snapshot()
 
 # Training a Machine Learning model to predict customer churn
@@ -25,7 +25,8 @@ library(caret)
 library(pROC)
 library(ggplot2)
 library(randomForest)
-library(xgboost)
+# library(xgboost)
+library(gbm)
 
 
 cat("======================================================\n\n")
@@ -36,26 +37,28 @@ df <- read.csv("data/processed/clean_customer_intelligence.csv", stringsAsFactor
 # Remove 'customer_id' because it is just a random string of text and has no 
 # predictive value. If we leave it in, the model might get confused.
 df$customer_id <- NULL
-
-
-cat("[System] Sanitizing data to meet XGBoost strict matrix requirements...\n")
 # 1. Drop any hidden empty rows
 df <- na.omit(df)
 
-# 2. Clean the column names
-colnames(df) <- make.names(colnames(df))
 
-# 3. Clean the text inside the categorical columns (e.g., "Month-to-month" becomes "Month.to.month")
-for (col in colnames(df)) {
-  if (is.factor(df[[col]]) && col != "churn") {
-    levels(df[[col]]) <- make.names(levels(df[[col]]))
-  }
-}
+## Previously tried to solve with XGBoost. Pivoted towards GBM intead.
+# # ==============================================================================
+# # 1.5. Fixing error with XGBoost R Compatibility
+# # ==============================================================================
+# cat("[System] Encoding for XGBoost compatibility...\n")
 
+# # Create a blueprint to turn all text columns (except churn) into 1/0 numeric columns
+# dummy_blueprint <- dummyVars(churn ~ ., data = df)
 
+# # Apply the blueprint to create a completely numeric dataframe
+# df_numeric <- predict(dummy_blueprint, newdata = df)
+# df_numeric <- as.data.frame(df_numeric)
 
+# # Aggressively sanitize the new column names so XGBoost's C++ engine doesn't crash
+# colnames(df_numeric) <- make.names(colnames(df_numeric))
 
-
+# # Add our text target variable ('churn') back onto the numeric dataframe
+# df_numeric$churn <- df$churn
 
 
 
@@ -72,9 +75,9 @@ for (col in colnames(df)) {
 # HOW: We use createDataPartition() from the caret package to split the data randomly.
 
 set.seed(42) # Sets a static random starting point so our results are exactly the same every time we run this script.
-train_index <- createDataPartition(df$churn, p = 0.7, list = FALSE)
-train_data <- df[train_index, ]
-test_data  <- df[-train_index, ]
+train_index <- createDataPartition(df_numeric$churn, p = 0.7, list = FALSE)
+train_data <- df_numeric[train_index, ]
+test_data  <- df_numeric[-train_index, ]
 
 cat("[System] Data split: 70% Training, 30% Holdout Testing.\n")
 
@@ -128,12 +131,10 @@ model_rf <- train(churn ~ ., data = train_data,
 
 # Model 3: XGBoost
 set.seed(42)
-cat("-> Training XGBoost...\n")
-model_xgb <- train(churn ~ ., data = train_data, 
-                   method = "xgbTree", 
-                   metric = "ROC", trControl = cv_rules,
-                   tuneLength = 3) # Let caret try 3 different tuning configurations automatically
-
+cat("-> Training GBM (Gradient Boosting)...\n")
+model_gbm <- train(churn ~ ., data = train_data,
+                    method = "gbm", metric = "ROC", 
+                    trControl = cv_rules, verbose = FALSE)
 
 
 
@@ -144,7 +145,7 @@ model_xgb <- train(churn ~ ., data = train_data,
 
 
 # ------------------------------------------------------------------------------
-# 5. EVALUATE AND DECLARE THE WINNER
+# 5. EVALUATE AND DECLARE WINNER
 # ------------------------------------------------------------------------------
 # WHAT: We collect the cross-validation scores from all three models and compare them.
 # HOW: The resamples() function gathers the test scores so we can declare a statistical winner.
@@ -152,7 +153,7 @@ model_xgb <- train(churn ~ ., data = train_data,
 bakeoff_results <- resamples(list(
   Logistic = model_glm,
   RandomForest = model_rf,
-  XGBoost = model_xgb
+  GBM = model_gbm
 ))
 
 cat("\n======================================================\n")
@@ -173,7 +174,7 @@ p_bakeoff <- bwplot(bakeoff_results, metric = "ROC",
                     scales = list(x = list(relation = "free"), y = list(relation = "free")))
 
 # Note: caret's bwplot uses the lattice graphics engine, not ggplot2, so saving is slightly different
-png("visualizations/10_algorithm_bakeoff.png", width = 800, height = 600, res = 120)
+png("visualizations/06_algorithm_bakeoff.png", width = 800, height = 600, res = 120)
 print(p_bakeoff)
 dev.off()
 cat("[System] Saved: visualizations/06_algorithm_bakeoff.png\n")
@@ -181,13 +182,11 @@ cat("[System] Saved: visualizations/06_algorithm_bakeoff.png\n")
 
 
 # ==============================================================================
-# 5.5. FINAL EXAM: PREDICTING UNSEEN DATA WITH XGBOOST
+# 6. FINAL EXAM: PREDICTING UNSEEN DATA WITH GBM
 
-# Crucical step we were previously missing. 
-# We must generate predictions before we can evaluate them.
-cat("\n[System] Running Final Predictions on Unseen Test Data using XGBoost...\n")
-final_probabilities <- predict(model_xgb, test_data, type = "prob")[,"Yes"]
-final_predictions <- predict(model_xgb, test_data)
+cat("\n[System] Running Final Predictions on Unseen Test Data using GBM...\n")
+final_probabilities <- predict(model_gbm, test_data, type = "prob")[, "Yes"]
+final_predictions <- predict(model_gbm, test_data)
 actual_answers <- test_data$churn
 
 
@@ -197,7 +196,7 @@ actual_answers <- test_data$churn
 
 
 # ==============================================================================
-# 6. MODEL EVALUATION
+# 7. MODEL EVALUATION
 # ==============================================================================
 # We must calculate these variables first so our charts can use them!
 evaluation <- confusionMatrix(final_predictions, actual_answers, positive = "Yes")
@@ -208,8 +207,11 @@ cat("\n--- FINAL TEST SET PERFORMANCE ---\n")
 cat(sprintf("-> Overall Accuracy: %.2f%%\n", accuracy))
 cat(sprintf("-> Recall (Sensitivity): %.2f%%\n", recall))
 
+
+
+
 # ==============================================================================
-# 7. MODEL VISUALIZATIONS
+# 8. MODEL VISUALIZATIONS
 # ==============================================================================
 cat("\n[System] Generating Model Visualizations...\n")
 
@@ -223,7 +225,7 @@ plot_data <- data.frame(
 p_prob <- ggplot(plot_data, aes(x = Probability, fill = Actual)) +
   geom_density(alpha = 0.6, color = "white") +
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 1) +
-  labs(title = "XGBoost: Probability Distribution", # Updated title
+  labs(title = "GBM: Probability Distribution", # Updated title
        subtitle = "Dashed line represents the 0.50 Decision Threshold.",
        x = "Predicted Probability of Churning",
        y = "Density",
@@ -232,7 +234,7 @@ p_prob <- ggplot(plot_data, aes(x = Probability, fill = Actual)) +
   scale_fill_manual(values = c("No" = "#3498db", "Yes" = "#e74c3c"))
 
 ggsave("visualizations/07_probability_distribution.png", plot = p_prob, width = 8, height = 5, dpi = 300)
-cat("[System] Saved: visualizations/06_probability_distribution.png\n")
+cat("[System] Saved: visualizations/07_probability_distribution.png\n")
 
 # -- Visual 2: Confusion Matrix Heatmap --
 # Convert the matrix table into a format ggplot can read
@@ -243,7 +245,7 @@ p_cm <- ggplot(cm_table, aes(x = Reference, y = Prediction, fill = Freq)) +
   geom_tile(color = "white", size = 1) +
   geom_text(aes(label = Freq), vjust = 0.5, size = 8, color = "black", fontface = "bold") +
   scale_fill_gradient(low = "#ecf0f1", high = "#3498db") +
-  labs(title = "Confusion Matrix: Model Performance",
+  labs(title = "Confusion Matrix: GBM Performance",
        subtitle = paste("Overall Accuracy:", round(accuracy, 1), "% | Recall:", round(recall, 1), "%"),
        x = "Actual Reality (What happened)",
        y = "Model Prediction (What the math guessed)") +
@@ -263,7 +265,7 @@ cat("\n[System] Generating Advanced Diagnostics...\n")
 
 # -- Visual 3: Feature Importance (ggplot version) --
 # Extract the mathematical weights the model assigned to each feature
-importance_data <- varImp(model_xgb, scale = FALSE)
+importance_data <- varImp(model_gbm, scale = FALSE)
 
 # Caret stores the actual data frame inside the $importance slot for tree models
 importance_df <- data.frame(
@@ -277,7 +279,7 @@ importance_df <- importance_df[order(-importance_df$Importance), ][1:10, ]
 p_importance <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
   geom_col(fill = "#2c3e50", color = "black") +
   coord_flip() + # Flip to make the feature names readable
-  labs(title = "Feature Importance: Top 10 Churn Drivers (XGBoost)",
+  labs(title = "Feature Importance: Top 10 Churn Drivers (GBM)",
        subtitle = "Variables with the longest bars have the heaviest impact on the model's math.",
        x = "Customer Feature",
        y = "Importance Weight") +
@@ -300,7 +302,7 @@ roc_df <- data.frame(
 p_roc <- ggplot(roc_df, aes(x = 1 - Specificity, y = Sensitivity)) +
   geom_line(color = "#e74c3c", size = 1.5) +
   geom_abline(linetype = "dashed", color = "gray") + # The "Coin Flip" line
-  labs(title = "ROC Curve (Final XGBoost Model)",
+  labs(title = "ROC Curve (Final GBM Model)",
        subtitle = sprintf("AUC Score: %.3f (1.0 is perfect, 0.5 is random guessing)", auc_score),
        x = "False Positive Rate (1 - Specificity)",
        y = "True Positive Rate (Sensitivity / Recall)") +
@@ -310,4 +312,3 @@ p_roc <- ggplot(roc_df, aes(x = 1 - Specificity, y = Sensitivity)) +
 ggsave("visualizations/10_roc_auc_curve.png", plot = p_roc, width = 7, height = 6, dpi = 300)
 cat("[System] Saved: visualizations/10_roc_auc_curve.png\n")
 cat("======================================================\n")
-
