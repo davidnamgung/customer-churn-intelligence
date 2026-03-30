@@ -37,7 +37,7 @@ SELECT
 FROM dim_customers c
 INNER JOIN fact_billing b ON c.customer_id = b.customer_id
 WHERE b.total_charges IS NOT NULL;
-
+```
 ---
 
 ## 3. 🏗️ Technical Architecture
