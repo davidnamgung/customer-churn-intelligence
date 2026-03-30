@@ -1,0 +1,19 @@
+# Ignore Data Files (Never push raw data to GitHub)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Ignore API Keys and Environment Variables
+.env
+.Renviron
+
+# Ignore R/RStudio History and Workspace files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
