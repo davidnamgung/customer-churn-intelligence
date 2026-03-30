@@ -1,12 +1,15 @@
-# install.packages("caret")
+# (install.packages(c("randomForest", "xgboost", "caret"))
 # renv::snapshot()
 
-
 # Training a Machine Learning model to predict customer churn
-# Logistic Regression is actually a classification algorithm. 
-#   It is designed to answer a Yes/No question, but it does so by calculating a probability.
 
-library(caret)
+# Machine Learning Approach
+# Divided the training data into 10 equal blocks. The model studies 9 blocks and takes a test on the 10th. Then, it throws that away, picks a different 9 blocks to study, and tests on the remaining 1. It does this 10 separate times, and we average the score.
+# mathematically eliminates "bad luck." If a model scores an 85% AUC across 10 different rotating exams, you can promise with absolute certainty that the model is stable.
+
+
+
+
 # ------------------------------------------------------------------------------
 # 1. LOAD AND PREPARE THE DATA
 # ------------------------------------------------------------------------------
@@ -15,7 +18,19 @@ library(caret)
 # HOW: read.csv() with stringsAsFactors = TRUE. Machine learning models in R 
 #      require text categories (like "Yes"/"No" or "Male"/"Female") to be 
 #      explicitly defined as "Factors" (levels) rather than plain text.
+cat("======================================================\n\n")
+cat(" LOADING ESSENTIAL LIBRARIES \n")
+cat("======================================================\n\n")
+library(caret)
+library(pROC)
+library(ggplot2)
+library(randomForest)
+library(xgboost)
 
+
+cat("======================================================\n\n")
+cat(" INITIATING ADVANCED ML PIPELINE \n")
+cat("======================================================\n\n")
 df <- read.csv("data/processed/clean_customer_intelligence.csv", stringsAsFactors = TRUE)
 
 # Remove 'customer_id' because it is just a random string of text and has no 
@@ -23,10 +38,31 @@ df <- read.csv("data/processed/clean_customer_intelligence.csv", stringsAsFactor
 df$customer_id <- NULL
 
 
+cat("[System] Sanitizing data to meet XGBoost strict matrix requirements...\n")
+# 1. Drop any hidden empty rows
+df <- na.omit(df)
+
+# 2. Clean the column names
+colnames(df) <- make.names(colnames(df))
+
+# 3. Clean the text inside the categorical columns (e.g., "Month-to-month" becomes "Month.to.month")
+for (col in colnames(df)) {
+  if (is.factor(df[[col]]) && col != "churn") {
+    levels(df[[col]]) <- make.names(levels(df[[col]]))
+  }
+}
+
+
+
+
+
+
+
+
 
 # ------------------------------------------------------------------------------
-# 2. THE TRAIN / TEST SPLIT
-# ------------------------------------------------------------------------------
+# 2. TRAIN / TEST SPLIT
+
 # WHAT: We are dividing our 7,000 rows of data into two separate groups:
 #       - Training Set (70%): The model uses this to learn the patterns.
 #       - Testing Set (30%): The model has NEVER seen this data. We use it for a final exam.
@@ -37,93 +73,123 @@ df$customer_id <- NULL
 
 set.seed(42) # Sets a static random starting point so our results are exactly the same every time we run this script.
 train_index <- createDataPartition(df$churn, p = 0.7, list = FALSE)
-
 train_data <- df[train_index, ]
 test_data  <- df[-train_index, ]
 
-cat("[System] Data successfully split: 70% Training, 30% Testing.\n")
+cat("[System] Data split: 70% Training, 30% Holdout Testing.\n")
 
 
 
 
 # ------------------------------------------------------------------------------
-# 3. TRAIN THE ALGORITHM (LOGISTIC REGRESSION)
-# ------------------------------------------------------------------------------
-# WHAT: We are training a Logistic Regression model.
-# WHY: It is highly interpretable. It will calculate mathematical "weights" for 
-#      every feature (e.g., Month-to-month contracts get a high risk weight).
-#       - If Month-to-Month contracts are highly correlated with churn, the algorithm gives $\beta_3$ a large positive number. 
-#       - If high tenure prevents churn, $\beta_1$ gets a large negative number.
-# HOW: We use the glm() function (Generalized Linear Model).
-#      Formula: churn ~ . means "Predict 'churn' based on ALL other columns (.)"
+# 3. 10-FOLD CROSS-VALIDATION RULES
 
-cat("[System] Training Logistic Regression Model... Please wait.\n")
+# WHAT: We divide the training data into 10 equal chunks. The model trains on 9 
+#       chunks and tests itself on the 1st. It repeats this 10 times, rotating the test chunk.
+# WHY: This prevents "lucky" splits and proves the model is universally stable.
+# HOW: trainControl() establishes the rules for the upcoming Bake-Off.
 
-# Note: We use family = "binomial" because our outcome has only two options (Yes/No)
-churn_model <- glm(churn ~ ., data = train_data, family = "binomial")
+cat("\n[System] Establishing 10-Fold Cross-Validation rules...\n")
 
-
-
-
-
-
-# ------------------------------------------------------------------------------
-# 4. GENERATE PREDICTIONS ON THE UNSEEN TEST DATA
-# ------------------------------------------------------------------------------
-# WHAT: We hand the model the Testing Set (which doesn't have the answers visible) 
-#       and ask it to guess who will churn.
-# WHY: This simulates deploying the model in the real world on current customers.
-# HOW: The predict() function outputs a probability (0.00 to 1.00). We set a 
-#      threshold at 0.50. If the probability is > 50%, we label them a "Yes" (Churner).
-
-probabilities <- predict(churn_model, test_data, type = "response")
-predictions   <- ifelse(probabilities > 0.50, "Yes", "No")
-# Push every single raw $z$ scores through the Sigmoid function, and return the final probability bounded between 0.00 and 1.00.
-# The model uses a Decision Threshold to make the final Yes/No call. By default, this is exactly $0.50$.
-# If $P(\text{Churn}) > 0.50$, predict "Yes".
-# If $P(\text{Churn}) \le 0.50$, predict "No".
-
-# Convert our text predictions into "Factors" so we can grade them against the actual answers
-predictions <- as.factor(predictions)
-actual_answers <- test_data$churn
+cv_rules <- trainControl(
+  method = "cv", 
+  number = 10,
+  classProbs = TRUE,                # Required to calculate AUC
+  summaryFunction = twoClassSummary # Tells caret to grade based on ROC/AUC, not just Accuracy
+)
 
 
 
 
 
 # ------------------------------------------------------------------------------
-# 5. EVALUATE THE MODEL (THE CONFUSION MATRIX)
-# ------------------------------------------------------------------------------
-# WHAT: We compare the model's predictions to the actual reality of the Test Set.
-# WHY: We need to know if the model is actually good enough to give to the CEO.
-# HOW: We generate a Confusion Matrix, which grades the model's Accuracy and Recall.
+# 4. TRAINING MULTIPLE MODELS
 
-evaluation <- confusionMatrix(predictions, actual_answers, positive = "Yes")
+# WHAT: We train three entirely different AI architectures on the exact same data.
+# 1. Logistic Regression: The classic, linear math approach.
+# 2. Random Forest: Builds 500 decision trees and takes a majority vote.
+# 3. XGBoost: An extreme gradient boosting engine that learns from its own mistakes sequentially.
+
+cat("[System] Algorithm Bake-Off. This may take a few minutes...\n")
+
+# Model 1: Logistic Regression
+set.seed(42)
+cat("-> Training Logistic Regression...\n")
+model_glm <- train(churn ~ ., data = train_data, 
+                   method = "glm", family = "binomial", 
+                   metric = "ROC", trControl = cv_rules)
+
+# Model 2: Random Forest
+set.seed(42)
+cat("-> Training Random Forest...\n")
+model_rf <- train(churn ~ ., data = train_data, 
+                  method = "rf", 
+                  metric = "ROC", trControl = cv_rules)
+
+# Model 3: XGBoost
+set.seed(42)
+cat("-> Training XGBoost...\n")
+model_xgb <- train(churn ~ ., data = train_data, 
+                   method = "xgbTree", 
+                   metric = "ROC", trControl = cv_rules,
+                   tuneLength = 3) # Let caret try 3 different tuning configurations automatically
+
+
+
+
+
+
+
+
+
+
+# ------------------------------------------------------------------------------
+# 5. EVALUATE AND DECLARE THE WINNER
+# ------------------------------------------------------------------------------
+# WHAT: We collect the cross-validation scores from all three models and compare them.
+# HOW: The resamples() function gathers the test scores so we can declare a statistical winner.
+
+bakeoff_results <- resamples(list(
+  Logistic = model_glm,
+  RandomForest = model_rf,
+  XGBoost = model_xgb
+))
 
 cat("\n======================================================\n")
-cat(" 📈 MODEL EVALUATION RESULTS \n")
+cat(" BAKE-OFF RESULTS (AUC SCORES) \n")
 cat("======================================================\n")
 
-# Extract the specific grades from the evaluation object
-accuracy <- evaluation$overall["Accuracy"] * 100
-recall   <- evaluation$byClass["Sensitivity"] * 100 
+# Print the median AUC score for each algorithm
+summary_stats <- summary(bakeoff_results)
+print(summary_stats$statistics$ROC[, "Median"])
 
-# RESULT & MEANING: Print the business translation of the math
-cat(sprintf("-> Overall Accuracy: %.2f%%\n", accuracy))
-cat("Meaning: Out of all the customers we tested, the model guessed their status correctly this percentage of the time.\n\n")
-
-cat(sprintf("-> Recall (Sensitivity): %.2f%%\n", recall))
-cat("Meaning: This is the most important metric. Out of all the people who ACTUALLY churned, this is the percentage our model successfully caught before they left.\n\n")
-
-# Business Action Plan based on results
-cat("--- BUSINESS CONCLUSION ---\n")
-if(accuracy > 75) {
-  cat("Success! The model is performing well above random guessing (which would be ~50%).\n")
-  cat("Next Step: We can deploy this model to flag high-risk customers in the database, allowing the Marketing team to send them targeted discount offers BEFORE they cancel.\n")
-} else {
-  cat("The model needs improvement. We may need to gather more data points (like customer service call logs) to increase predictive power.\n")
-}
+cat("\nMeaning: The algorithm with the highest median AUC score is formally declared our most predictive model.\n")
 cat("======================================================\n")
+
+# -- Visual: Bake-Off Comparison Boxplot --
+cat("[System] Generating Bake-Off Comparison Visualization...\n")
+p_bakeoff <- bwplot(bakeoff_results, metric = "ROC", 
+                    main = "Algorithm Bake-Off: Cross-Validated AUC Scores",
+                    scales = list(x = list(relation = "free"), y = list(relation = "free")))
+
+# Note: caret's bwplot uses the lattice graphics engine, not ggplot2, so saving is slightly different
+png("visualizations/10_algorithm_bakeoff.png", width = 800, height = 600, res = 120)
+print(p_bakeoff)
+dev.off()
+cat("[System] Saved: visualizations/06_algorithm_bakeoff.png\n")
+
+
+
+# ==============================================================================
+# 5.5. FINAL EXAM: PREDICTING UNSEEN DATA WITH XGBOOST
+
+# Crucical step we were previously missing. 
+# We must generate predictions before we can evaluate them.
+cat("\n[System] Running Final Predictions on Unseen Test Data using XGBoost...\n")
+final_probabilities <- predict(model_xgb, test_data, type = "prob")[,"Yes"]
+final_predictions <- predict(model_xgb, test_data)
+actual_answers <- test_data$churn
+
 
 
 
@@ -131,7 +197,19 @@ cat("======================================================\n")
 
 
 # ==============================================================================
-# 6. MODEL VISUALIZATIONS
+# 6. MODEL EVALUATION
+# ==============================================================================
+# We must calculate these variables first so our charts can use them!
+evaluation <- confusionMatrix(final_predictions, actual_answers, positive = "Yes")
+accuracy <- evaluation$overall["Accuracy"] * 100
+recall   <- evaluation$byClass["Sensitivity"] * 100 
+
+cat("\n--- FINAL TEST SET PERFORMANCE ---\n")
+cat(sprintf("-> Overall Accuracy: %.2f%%\n", accuracy))
+cat(sprintf("-> Recall (Sensitivity): %.2f%%\n", recall))
+
+# ==============================================================================
+# 7. MODEL VISUALIZATIONS
 # ==============================================================================
 cat("\n[System] Generating Model Visualizations...\n")
 
@@ -139,23 +217,21 @@ cat("\n[System] Generating Model Visualizations...\n")
 # Create a dataframe of our predictions for plotting
 plot_data <- data.frame(
   Actual = test_data$churn,
-  Probability = probabilities
+  Probability = final_probabilities # Updated to the XGBoost probabilities
 )
 
 p_prob <- ggplot(plot_data, aes(x = Probability, fill = Actual)) +
   geom_density(alpha = 0.6, color = "white") +
   geom_vline(xintercept = 0.5, linetype = "dashed", color = "black", size = 1) +
-  labs(title = "Logistic Regression: Probability Distribution",
+  labs(title = "XGBoost: Probability Distribution", # Updated title
        subtitle = "Dashed line represents the 0.50 Decision Threshold.",
        x = "Predicted Probability of Churning",
        y = "Density",
        fill = "Actual Outcome") +
   theme_minimal(base_size = 14) +
-  scale_fill_manual(values = c("No" = "#3498db", "Yes" = "#e74c3c")) +
-  annotate("text", x = 0.25, y = max(density(plot_data$Probability)$y), label = "Predicted 'No'", size = 5) +
-  annotate("text", x = 0.75, y = max(density(plot_data$Probability)$y), label = "Predicted 'Yes'", size = 5)
+  scale_fill_manual(values = c("No" = "#3498db", "Yes" = "#e74c3c"))
 
-ggsave("visualizations/06_probability_distribution.png", plot = p_prob, width = 8, height = 5, dpi = 300)
+ggsave("visualizations/07_probability_distribution.png", plot = p_prob, width = 8, height = 5, dpi = 300)
 cat("[System] Saved: visualizations/06_probability_distribution.png\n")
 
 # -- Visual 2: Confusion Matrix Heatmap --
@@ -174,24 +250,26 @@ p_cm <- ggplot(cm_table, aes(x = Reference, y = Prediction, fill = Freq)) +
   theme_minimal(base_size = 14) +
   theme(legend.position = "none")
 
-ggsave("visualizations/07_confusion_matrix.png", plot = p_cm, width = 6, height = 6, dpi = 300)
-cat("[System] Saved: visualizations/07_confusion_matrix.png\n")
+ggsave("visualizations/08_confusion_matrix.png", plot = p_cm, width = 6, height = 6, dpi = 300)
+cat("[System] Saved: visualizations/08_confusion_matrix.png\n")
 cat("======================================================\n")
 
 
 
-
-
 # ==============================================================================
-# 7. ADVANCED VISUAL DIAGNOSTICS (Feature Importance & ROC-AUC)
+# 8. ADVANCED VISUAL DIAGNOSTICS
 # ==============================================================================
-library(pROC)
 cat("\n[System] Generating Advanced Diagnostics...\n")
 
-# -- Visual 3: Feature Importance --
+# -- Visual 3: Feature Importance (ggplot version) --
 # Extract the mathematical weights the model assigned to each feature
-importance_data <- varImp(churn_model, scale = FALSE)
-importance_df <- data.frame(Feature = rownames(importance_data), Importance = importance_data$Overall)
+importance_data <- varImp(model_xgb, scale = FALSE)
+
+# Caret stores the actual data frame inside the $importance slot for tree models
+importance_df <- data.frame(
+  Feature = rownames(importance_data$importance), 
+  Importance = importance_data$importance$Overall
+)
 
 # Sort to find the Top 10 most impactful drivers
 importance_df <- importance_df[order(-importance_df$Importance), ][1:10, ]
@@ -199,18 +277,18 @@ importance_df <- importance_df[order(-importance_df$Importance), ][1:10, ]
 p_importance <- ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
   geom_col(fill = "#2c3e50", color = "black") +
   coord_flip() + # Flip to make the feature names readable
-  labs(title = "Feature Importance: Top 10 Churn Drivers",
+  labs(title = "Feature Importance: Top 10 Churn Drivers (XGBoost)",
        subtitle = "Variables with the longest bars have the heaviest impact on the model's math.",
        x = "Customer Feature",
        y = "Importance Weight") +
   theme_minimal(base_size = 14)
 
-ggsave("visualizations/08_feature_importance.png", plot = p_importance, width = 8, height = 5, dpi = 300)
-cat("[System] Saved: visualizations/08_feature_importance.png\n")
+ggsave("visualizations/09_feature_importance.png", plot = p_importance, width = 8, height = 5, dpi = 300)
+cat("[System] Saved: visualizations/09_feature_importance.png\n")
 
 # -- Visual 4: ROC Curve & AUC Score --
 # Calculate the curve using the actual answers vs the raw predicted probabilities
-roc_object <- roc(actual_answers, probabilities, quiet = TRUE)
+roc_object <- roc(actual_answers, final_probabilities, quiet = TRUE)
 auc_score <- auc(roc_object)
 
 # Convert the ROC object into a format ggplot can use
@@ -222,13 +300,14 @@ roc_df <- data.frame(
 p_roc <- ggplot(roc_df, aes(x = 1 - Specificity, y = Sensitivity)) +
   geom_line(color = "#e74c3c", size = 1.5) +
   geom_abline(linetype = "dashed", color = "gray") + # The "Coin Flip" line
-  labs(title = "ROC Curve (Receiver Operating Characteristic)",
+  labs(title = "ROC Curve (Final XGBoost Model)",
        subtitle = sprintf("AUC Score: %.3f (1.0 is perfect, 0.5 is random guessing)", auc_score),
        x = "False Positive Rate (1 - Specificity)",
        y = "True Positive Rate (Sensitivity / Recall)") +
   theme_minimal(base_size = 14) +
   annotate("text", x = 0.75, y = 0.25, label = paste("AUC =", round(auc_score, 3)), size = 6, fontface = "bold")
 
-ggsave("visualizations/09_roc_auc_curve.png", plot = p_roc, width = 7, height = 6, dpi = 300)
-cat("[System] Saved: visualizations/09_roc_auc_curve.png\n")
+ggsave("visualizations/10_roc_auc_curve.png", plot = p_roc, width = 7, height = 6, dpi = 300)
+cat("[System] Saved: visualizations/10_roc_auc_curve.png\n")
 cat("======================================================\n")
+
