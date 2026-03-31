@@ -7,7 +7,9 @@ format:
   html:
     # --- Aesthetics & Typography ---
     theme: lux
-    title-block-banner: true 
+    title-block-banner: "#575757" 
+    title-block-banner-color: "white"
+    
     
     # --- Navigation & Reading Experience ---
     toc: true
@@ -29,13 +31,51 @@ execute:
   warning: false
   message: false 
 ---
-
 <style>
+  /* Your existing bolding style */
   strong, b {
     font-weight: 900 !important;
-    -webkit-text-stroke: 1px #2C3E50; /* This adds a tiny outline to the letters */
+    -webkit-text-stroke: 0.4px #2C3E50;
   }
+
+  /* Custom styling for your tags */
+  .badge {
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    margin: 4px;
+    border-radius: 50px; /* Makes them pill-shaped */
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  
+  /* Matches the Lux primary color */
+  .bg-primary { background-color: #2C3E50 !important; }
+  .bg-secondary { background-color: #95a5a6 !important; }
+  .bg-success { background-color: #18bc9c !important; }
 </style>
+
+<div style="text-align: center; margin-bottom: 25px;">
+  <a href="www.linkedin.com/in/david-namgung" target="_blank" style="text-decoration: none; margin: 0 15px;">
+    <img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn">
+  </a>
+  <a href="https://davidnamgung.github.io/portfolio-website/" target="_blank" style="text-decoration: none; margin: 0 15px;">
+    <img src="https://img.shields.io/badge/Portfolio-2C3E50?style=for-the-badge&logo=react&logoColor=white" alt="Portfolio">
+  </a>
+  <a href="https://github.com/davidnamgung" target="_blank" style="text-decoration: none; margin: 0 15px;">
+    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub">
+  </a>
+
+  <span class="badge bg-primary">R / Tidyverse</span>
+  <span class="badge bg-primary">PostgreSQL</span>
+  <span class="badge bg-primary">Data Analysis (EDA)</span>
+  <span class="badge bg-primary">Hypothesis Testing</span>
+  <span class="badge bg-primary">GBM</span>
+  <span class="badge bg-primary">Logistic Regression</span>
+  <span class="badge bg-primary">RandomForest</span>
+  <span class="badge bg-primary">API Integration</span>
+  <span class="badge bg-primary">ROI Optimized</span>
+</div>
 
 # 1. Project Overview & Problem Statement
 Customer attrition (churn) is a primary destroyer of enterprise value in subscription-based business models. For telecommunications providers, acquiring a new customer is historically 5 to 25 times more expensive than retaining an existing one. 
@@ -92,11 +132,7 @@ In the modern SaaS and Telecommunications landscape, "Subscription Health" is th
 
 # 4. Data Architecture & Collection
 
-<br>
-
-[⬇️ Download Raw IBM Telco Dataset (CSV)](data/telco_raw.csv){.btn .btn-primary download="IBM_Telco_Churn_Raw.csv"}
-
-<br>
+[⬇️ Download Raw IBM Telco Dataset (CSV)](data/telco_raw.csv){.btn .btn-primary .btn-sm .rounded-pill download="IBM_Telco_Churn_Raw.csv"}
 
 This project required fusing distinct, multi-modal data sources into a unified analytical environment:
 
@@ -222,20 +258,28 @@ We constructed a competitive "Bake-Off" using 10-fold Cross-Validation across th
 
 ![Cross-Validated AUC Scores comparing GBM, Logistic Regression, and Random Forest.](visualizations/06_algorithm_bakeoff.png)
 
-### 9.1 Logistic Regression (The Baseline)
+### 📉 Logistic Regression
+**Performance:** 0.79 AUC.
+
 Used for its high interpretability, estimating the log-odds of a customer churning:
 $$\ln\left(\frac{p}{1-p}\right) = \beta_0 + \beta_1 X_1 + \dots + \beta_n X_n$$
 *Performance:* Established a strong baseline but struggled to capture complex, non-linear interactions between variables like Tenure and Internet Service Type.
 
 While it achieved a respectable AUC (likely around 0.78 - 0.80), its failure to capture "non-linear interactions" was its downfall. For example, a high monthly bill might be fine for a 5-year veteran but a "churn-trigger" for a 2-month rookie. Logistic Regression struggles to see that nuanced "If/Then" relationship.
 
-### 9.2 Random Forest (The Ensemble)
+### 🌲 Random Forest
+**Performance:** 0.83 AUC.
+
 An ensemble learning method that constructs a multitude of decision trees at training time, outputting the mode of the classes (classification). It is highly resilient to overfitting.
 *Performance:* Improved accuracy but required significant computational overhead and struggled slightly with class imbalance.
 
 It performed better than the baseline (likely 0.82 - 0.84 AUC). However, because it builds trees independently, it can sometimes be "noisy." In our case, the class imbalance (more people stay than leave) meant the "crowd" of trees was slightly biased toward predicting everyone would stay, leading to lower sensitivity for actual churners.
 
-### 9.3 Gradient Boosting Machine - GBM (The Champion)
+### 🏆 GBM (The Champion)
+**Performance:** 0.862 AUC.
+
+GBM was the winner due to its sequential error correction. It captured the "Perfect Storm" of high `charge_diff` and macroeconomic timing.
+
 GBM builds trees sequentially, where each new tree strictly focuses on correcting the mathematical errors (residuals) of the previous trees by optimizing a differentiable loss function.
 *Performance:* **Winner.** Yielded the highest cross-validated AUC (0.862) and showcased superior capability in handling our engineered numerical features.
 
@@ -244,11 +288,38 @@ By achieving the 0.862 AUC, GBM proved it could find the "hidden signals" in you
 ### 9.4 Final Model Evaluation
 The GBM was selected as the production model due to its superior Log-Loss optimization. While Logistic Regression offered simplicity, it lacked the "depth" to navigate the multi-dimensional triggers of the modern telecom consumer. The GBM’s 0.862 AUC represents a 12% predictive lift over the baseline, directly translating to more efficient capital allocation for the Retention Team. 
 
+
+#### 9.4.1 Probability Distribution: Class Separation Analysis
+The probability distribution (Density Plot) is the "Stress Test" of our model. It visualizes how confidently the GBM algorithm distinguishes between a customer who is staying and one who is leaving.
+
+A high-performing model should show two distinct "islands" or peaks. Our distribution shows a clean separation, meaning the model isn't just "guessing" around the middle (0.50); it is actively pushing high-risk customers toward the 0.80+ range and low-risk customers toward 0.10.
+
+The small area where the two colors overlap represents our "Uncertainty Zone." These are customers whose behavior is contradictory (e.g., they have a Month-to-Month contract but have been with us for 5 years).
+
+This chart proves that our "Hit List" is reliable. We aren't just flagging people at random; we are identifying a specific sub-group of customers who exhibit "Heavy Churn Signal."
 ![Probability distribution showing clear separation between actual outcomes.](visualizations/07_probability_distribution.png)
 
 
+#### 9.4.2 The Confusion Matrix: The Predictive Scorecard
+
+If the AUC is the "Grade," the Confusion Matrix is the "Scoreboard." It breaks down exactly where our hits and misses occurred at our chosen 0.50 decision threshold.
+
+**True Positives(The "Saves"):** These are the customers the model correctly identified as "At Risk." By targeting this specific group with our 15% retention offer, we directly address the $1.66M annual revenue leakage.
+
+**False Positives (The "False Alarms"):** These are customers the model flagged as leavers who were actually going to stay. In a churn context, a "False Alarm" is a low-cost mistake—it simply means we accidentally gave a discount to a loyal customer.
+
+**False Negatives (The "Blind Spots"):** These are the customers who churned that our model missed. Our goal in future iterations is to minimize this quadrant, as these represent "Unpredicted Revenue Loss."
+
+**Strategic Insight:** At an 81.5% accuracy rate, this matrix confirms that the ROI of the Retention Campaign far outweighs the cost of "False Alarms." We are successfully catching the vast majority of flight risks before they exit the portfolio.
+
 ![GBM Performance matrix detailing True Positives and False Alarms.](visualizations/08_confusion_matrix.png)
 
+
+#### 9.4.3 Area Under the Receiver Operating Characteristic Curve (AUC-ROC)
+
+AUC measures the model's ability to distinguish between churners and non-churners across all possible decision thresholds.
+
+An AUC of 0.862 indicates that if we randomly select one customer who churned and one who stayed, there is an 86.2% probability that our model will correctly assign a higher risk score to the churner. In a corporate environment, any score above 0.80 is considered an 'A-grade' predictive signal.
 
 ![Receiver Operating Characteristic Curve achieving an AUC of 0.862.](visualizations/10_roc_auc_curve.png)
 
@@ -262,6 +333,8 @@ The GBM algorithm's Feature Importance matrix revealed the true hierarchy of cus
 1. **`Contract Type` & `Monthly Charges`:** Internal pricing structures are the absolute heaviest drivers.
 2. **`cpi_at_signup`:** This external feature broke into the Top 10, proving our hypothesis. Customers acquired during economic stress are structurally fragile. 
 3. **`Fiber Optic`:** The technology type carries immense weight, confirming a product-market fit issue with the premium tier.
+
+While Contract Type was the strongest statistical predictor, I engineered charge_diff to capture the psychological trigger of price sensitivity. It allowed the model to distinguish between a high-paying customer who is happy with their plan and one who is being overcharged relative to their peers.
 
 **Conclusion:** We cannot blame the current economy for churn. We must blame our acquisition targeting and our rigid Month-to-Month pricing ladders.
 
@@ -279,6 +352,17 @@ The GBM algorithm's Feature Importance matrix revealed the true hierarchy of cus
 
 **Deployment Strategy:**
 To operationalize this, the PostgreSQL view (`v_customer_intelligence`) should be connected directly to a live Tableau Server. The R predictive script should run as a chron job (e.g., via GitHub Actions or AWS Lambda) every night at 2:00 AM, updating the `Churn_Risk_Score` for every active customer so the retention team has a fresh "Hit List" every morning.
+
+### 11.1 Optimal Intervention Threshold
+We analyzed the trade-off between "False Alarms" (offering a discount to someone who wasn't leaving) and "Missed Churners" (losing a customer entirely).
+
+::: {.hover}
+| Probability Threshold | Retention Cost (15% Disc) | Revenue Saved | Net ROI |
+| :--- | :--- | :--- | :--- |
+| **0.30 (Aggressive)** | High | Max ($110k) | Lower |
+| **0.55 (Balanced)** | Moderate | **High ($95k)** | **Maximum** |
+| **0.80 (Conservative)** | Low | Low ($40k) | Diminished |
+:::
 
 ---
 
@@ -334,9 +418,24 @@ feature_engineering AS (
 )
 ```
 
+```r
+# Utilizing Gradient Boosting with 5-fold Cross-Validation
+fitControl <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+gbm_model <- train(churn ~ ., data = train_data, 
+                   method = "gbm", 
+                   trControl = fitControl,
+                   verbose = FALSE,
+                   metric = "ROC")
+```
+
 
 # 14. Visual Appendix: The EDA Gallery
 The following grid contains the core Exploratory Data Analysis (EDA) visualizations used to inform the feature engineering and model selection phases. 
+
+<div style="text-align: center; margin: 20px 0;">
+  [📊 View Interactive Tableau Dashboard (Needs work)](https://public.tableau.com/views/CustomerChurnIntelligence/Dashboard1?:language=en-US&:sid=&:redirect=auth&:display_count=n&:origin=viz_share_link){.btn .btn-info .btn-sm .rounded-pill target="_blank"}
+</div>
 
 ::: {layout-ncol=2}
 ![Churn by Contract](visualizations/01_churn_by_contract.png)
@@ -349,3 +448,37 @@ The following grid contains the core Exploratory Data Analysis (EDA) visualizati
 
 ![Tenure vs. Revenue Scatter](visualizations/05_tenure_vs_charges_scatter.png)
 :::
+
+
+
+# 15. Mathematical Definitions
+
+The ROC Curve is a graphical plot that illustrates the diagnostic ability of a binary classifier. It maps the relationship between two key metrics as the model's "decision threshold" changes:
+
+Sensitivity (TPR): The ratio of correctly predicted positive observations to all observations in the actual class.
+$$\text{TPR} = \frac{TP}{TP + FN}$$
+
+False Positive Rate (FPR): The percentage of customers who weren't going to churn, but the model incorrectly flagged as risks.
+
+AUC measures the entire two-dimensional area underneath the entire ROC curve. Mathematically, it represents the probability that a model will rank a randomly chosen positive instance (a churner) higher than a randomly chosen negative instance (a stayer).
+
+$$AUC = \int_{0}^{1} TPR(FPR) \, dFPR$$
+
+Think of AUC as a grade for how well the model separates the two classes:
+
+0.5 (The Coin Flip): The model has no predictive power. It is guessing at random.
+
+0.7 – 0.8 (Acceptable): The model is doing a decent job but has a fair amount of overlap between classes.
+
+0.8 – 0.9 (Excellent): The model has strong discriminative power. This is the "sweet spot" for most professional data science projects.
+
+0.9 – 1.0 (Outstanding): The model is nearly perfect. (Warning: If you see a 1.0, you likely have "data leakage," meaning the model accidentally saw the answer during training).
+
+Imagine I give the model two customers: one we know for a fact canceled their service, and one we know stayed. If the AUC is 0.86, there is an 86% chance the model will correctly give a higher risk score to the person who actually canceled.
+
+It essentially tells us how much we can trust the ranking of our 'High Risk' list. High AUC means our top-priority leads are almost certainly the people we need to call first.
+
+
+---
+
+**Developed by David Namgung**
