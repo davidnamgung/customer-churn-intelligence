@@ -17,11 +17,14 @@ GROUP BY "Churn";
 
 
 
--- 3. Create a VIEW so we can easily pull this into R/Tableau later
+-- 3. Create the Master ML View (Integrating FRED Macro-Economic Data)
+
+-- Demolish the old view to avoid column-order conflicts
+DROP VIEW IF EXISTS v_customer_intelligence;
+
 CREATE OR REPLACE VIEW v_customer_intelligence AS
 WITH clean_data AS (
     SELECT 
-        -- Renaming columns to snake_case so we NEVER need double quotes again
         "customerID" AS customer_id,
         "gender" AS gender,
         "SeniorCitizen" AS senior_citizen,
@@ -41,46 +44,42 @@ WITH clean_data AS (
         "PaperlessBilling" AS paperless_billing,
         "PaymentMethod" AS payment_method,
         "MonthlyCharges" AS monthly_charges,
-        
-        -- Casts to text (avoids type crashes), trims spaces, turns empty to NULL, 
-        -- defaults to '0', and safely casts to NUMERIC.
         CAST(COALESCE(NULLIF(TRIM(CAST("TotalCharges" AS TEXT)), ''), '0') AS NUMERIC) AS total_charges,
-        
         "Churn" AS churn
     FROM raw_telco_churn
 ),
-feature_engineering AS (
+date_engineered AS (
+    -- Anchor to Jan 1, 2024. Subtract tenure (months) to find their exact signup month.
     SELECT 
         *,
-        -- Window Functions for Advanced Features
-        AVG(monthly_charges) OVER(PARTITION BY contract) AS avg_contract_monthly,
-        monthly_charges - AVG(monthly_charges) OVER(PARTITION BY contract) AS charge_diff_from_avg,
-        RANK() OVER(PARTITION BY contract ORDER BY total_charges DESC) AS spend_rank_in_contract
+        DATE_TRUNC('month', DATE '2024-01-01' - (tenure * INTERVAL '1 month'))::DATE AS estimated_signup_date
     FROM clean_data
+),
+feature_engineering AS (
+    SELECT 
+        d.*,
+-- Internal Financial Engineering (Window Functions)
+        AVG(CAST(monthly_charges AS NUMERIC)) OVER(PARTITION BY contract) AS avg_contract_monthly,
+        CAST(monthly_charges AS NUMERIC) - AVG(CAST(monthly_charges AS NUMERIC)) OVER(PARTITION BY contract) AS charge_diff_from_avg,        
+        -- External Macro-Economic Engineering (FRED API)
+        CAST(f.cpi_value AS NUMERIC) AS cpi_at_signup,
+        -- Calculate "Inflation Shock": CPI today (approx 308.4 for Jan 2024) minus CPI when they signed up
+        (308.417 - CAST(f.cpi_value AS NUMERIC)) AS inflation_point_increase
+
+    FROM date_engineered d
+    LEFT JOIN raw_fred_cpi f ON d.estimated_signup_date = CAST(f.observation_date AS DATE)
 )
-SELECT * FROM feature_engineering;
-
--- Why use window functions? 
--- Window functions allow you to perform calculations across a set of table rows that are somehow related to the current row.
--- AVG("MonthlyCharges") OVER(PARTITION BY "Contract") calculates the average bill for everyone on a Month-to-Month plan, 
---      and attaches that value to every customer on that plan. This allows us to calculate a "Z-score" or deviation:
--- $$Deviation = \text{MonthlyCharges} - \mu_{\text{contract\_type}}$$
-
--- If a customer's deviation is high, they might be more likely to churn because they feel they are overpaying compared to their peers!
-
-
-
-
--- 4. Linking FRED CPI data 
--- Telco data doesn't have "Dates," only "Tenure." 
--- We will assume the data was pulled in 2025-01-01 (latest point) and "look back."
-
--- Join Churn Data with Inflation Data
--- This shows if high inflation months correlate with higher churn rates.
 SELECT 
-    t.*,
-    c.cpi_value AS inflation_index
-FROM v_customer_intelligence t
-LEFT JOIN raw_fred_cpi c 
-    ON c.observation_date = '2025-01-01' -- Placeholder join for current economic state
-LIMIT 100;
+    -- We select everything EXCEPT the raw dates, so the ML model only sees clean math
+    customer_id, gender, senior_citizen, partner, dependents, tenure,
+    phone_service, multiple_lines, internet_service, online_security,
+    online_backup, device_protection, tech_support, streaming_tv,
+    streaming_movies, contract, paperless_billing, payment_method,
+    monthly_charges, total_charges, 
+    avg_contract_monthly, charge_diff_from_avg, 
+    cpi_at_signup, inflation_point_increase, 
+    churn
+FROM feature_engineering;
+
+
+SELECT * FROM v_customer_intelligence LIMIT 100;
