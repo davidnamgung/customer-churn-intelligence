@@ -1,5 +1,7 @@
-# ChurnShield: End-to-End Retention Intelligence 🛡️
+# End-to-End Customer Retention and Churn Intelligence 🛡️
 ### Predicting Telecommunications Attrition via Multi-Source Data Pipelines
+
+Full Link to report: [Report](https://davidnamgung.github.io/customer-churn-intelligence)
 
 ![Project Banner](https://img.shields.io/badge/Status-Complete-success)
 ![R](https://img.shields.io/badge/Language-R%20v4.3%2B-blue)
@@ -78,5 +80,5 @@ During the ML phase, the pipeline encountered a deep-level C++ memory pointer co
 
 ---
 
-## 👨‍💻 Contact
+## 👨‍💻 Porfolio Website
 **David Namgung** [Portfolio](https://davidnamgung.github.io/portfolio-website/) 
